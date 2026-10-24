@@ -1,0 +1,104 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function hasValidProfile() {
+        let profile = request.resource.data;
+        return profile.keys().hasAll([
+            'uid',
+            'fullName',
+            'email',
+            'termsAccepted',
+            'termsAcceptedAt',
+            'createdAt',
+            'updatedAt'
+          ])
+          && profile.keys().hasOnly([
+            'uid',
+            'fullName',
+            'email',
+            'termsAccepted',
+            'termsAcceptedAt',
+            'createdAt',
+            'updatedAt'
+          ])
+          && profile.uid == userId
+          && profile.fullName is string
+          && profile.fullName.size() > 0
+          && profile.email is string
+          && profile.email == request.auth.token.email
+          && profile.termsAccepted == true
+          && profile.termsAcceptedAt is timestamp
+          && profile.createdAt is timestamp
+          && profile.updatedAt is timestamp;
+      }
+
+      allow read: if isOwner();
+      allow create: if isOwner() && hasValidProfile();
+      allow update: if isOwner()
+        && hasValidProfile()
+        && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner();
+
+      match /transactions/{transactionId} {
+        function isTransactionOwner() {
+          return request.auth != null && request.auth.uid == userId;
+        }
+
+        function hasValidTransaction() {
+          let transaction = request.resource.data;
+          return transaction.keys().hasAll([
+              'amount',
+              'category',
+              'date',
+              'description',
+              'type',
+              'createdAt',
+              'updatedAt'
+            ])
+            && transaction.keys().hasOnly([
+              'amount',
+              'category',
+              'date',
+              'description',
+              'type',
+              'createdAt',
+              'updatedAt'
+            ])
+            && transaction.amount is number
+            && transaction.amount > 0
+            && transaction.amount <= 1000000000000
+            && transaction.category in [
+              'Food',
+              'Transport',
+              'Shopping',
+              'Bills',
+              'Health',
+              'Entertainment',
+              'Education',
+              'Other'
+            ]
+            && transaction.date is string
+            && transaction.date.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+            && transaction.description is string
+            && transaction.description.size() > 0
+            && transaction.description.size() <= 120
+            && transaction.type in ['income', 'expense']
+            && transaction.createdAt is timestamp
+            && transaction.updatedAt is timestamp;
+        }
+
+        allow read, delete: if isTransactionOwner();
+        allow create: if isTransactionOwner() && hasValidTransaction();
+        allow update: if isTransactionOwner()
+          && hasValidTransaction()
+          && request.resource.data.createdAt == resource.data.createdAt;
+      }
+    }
+  }
+}
